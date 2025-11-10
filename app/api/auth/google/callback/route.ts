@@ -1,24 +1,52 @@
-import { google } from 'googleapis';
+import { google, Auth } from 'googleapis';
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
 const dbPath = path.join(process.cwd(), 'data', 'db.json');
 
-async function readDb() {
+interface User {
+  id: string | null | undefined;
+  email: string | null | undefined;
+  name: string | null | undefined;
+  picture: string | null | undefined;
+  tokens: Auth.Credentials;
+  lastLogin: string;
+}
+
+interface Integration {
+  name: string;
+  userId: string | null | undefined;
+  connected: boolean;
+  tokens: Auth.Credentials;
+}
+
+interface Note {
+  id: number;
+  title: string;
+  summary: string;
+}
+
+interface DbData {
+  integrations: Integration[];
+  notes: Note[];
+  users: User[];
+}
+
+async function readDb(): Promise<DbData> {
   try {
     await fs.access(dbPath, fs.constants.F_OK); // Check if file exists
     const fileContent = await fs.readFile(dbPath, 'utf-8');
     return JSON.parse(fileContent);
-  } catch (error: any) {
-    if (error.code === 'ENOENT') { // File not found
-      return { integrations: [], notes: [] }; // Return default empty structure with notes array
+  } catch (error: unknown) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') { // File not found
+      return { integrations: [], notes: [], users: [] }; // Return default empty structure with notes array
     }
     throw error; // Re-throw other errors
   }
 }
 
-async function writeDb(data: any) {
+async function writeDb(data: DbData) {
   await fs.writeFile(dbPath, JSON.stringify(data, null, 2));
 }
 
@@ -46,7 +74,7 @@ export async function GET(request: Request) {
   console.log('Tokens:', tokens);
   console.log('User Info:', userInfo.data);
 
-  const db = await readDb();
+  const db: DbData = await readDb();
   
   // Initialize users array if it doesn't exist
   if (!db.users) {
@@ -55,7 +83,7 @@ export async function GET(request: Request) {
 
   // Find or create user
   const userEmail = userInfo.data.email;
-  let user = db.users.find((u: any) => u.email === userEmail);
+  let user = db.users.find((u: User) => u.email === userEmail);
   
   if (user) {
     if (!tokens.refresh_token && user.tokens?.refresh_token) {
@@ -79,7 +107,7 @@ export async function GET(request: Request) {
 
   // Update or create Google integration for this user
   const googleIntegration = db.integrations.find(
-    (integration: any) => integration.name === 'Google' && integration.userId === userInfo.data.id
+    (integration: Integration) => integration.name === 'Google' && integration.userId === userInfo.data.id
   );
 
   if (googleIntegration) {

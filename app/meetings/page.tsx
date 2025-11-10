@@ -59,6 +59,13 @@ const MeetingsPage = () => {
             );
           }
 
+          if (!calendarRes.ok && !extRes.ok) {
+            const data = await calendarRes.json().catch(() => ({}));
+            setError(data.message || 'Failed to fetch meetings');
+            setMeetings([]);
+            return;
+          }
+
           if (extRes.ok) {
             const ext = await extRes.json();
             list.push(
@@ -78,13 +85,6 @@ const MeetingsPage = () => {
           setMeetings([]);
           setLoading(false);
           setError('Google integration is disconnected. Connect it in Integrations.');
-          return;
-        }
-
-        if (!calendarRes.ok && !extRes.ok) {
-          const data = await calendarRes.json().catch(() => ({}));
-          setError(data.message || 'Failed to fetch meetings');
-          setMeetings([]);
           return;
         }
 

@@ -1,30 +1,60 @@
 // Test comment to trigger recompilation
 import { google } from 'googleapis';
+import { Credentials } from 'google-auth-library';
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
 const dbPath = path.join(process.cwd(), 'data', 'db.json');
 
-async function readDb() {
+
+
+interface Note {
+  id: number;
+  title: string;
+  summary: string;
+}
+
+interface User {
+  id: string | null | undefined;
+  email: string | null | undefined;
+  name: string | null | undefined;
+  tokens: Credentials;
+  lastLogin: string;
+}
+
+interface Integration {
+  name: string;
+  userId: string | null | undefined;
+  connected: boolean;
+  tokens: Credentials;
+}
+
+interface DbData {
+  integrations: Integration[];
+  notes: Note[];
+  users: User[];
+}
+
+async function readDb(): Promise<DbData> {
   try {
     await fs.access(dbPath, fs.constants.F_OK); // Check if file exists
     const fileContent = await fs.readFile(dbPath, 'utf-8');
     return JSON.parse(fileContent);
-  } catch (error: any) {
-    if (error.code === 'ENOENT') { // File not found
-      return { integrations: [], notes: [] }; // Return default empty structure with notes array
+  } catch (error: unknown) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') { // File not found
+      return { integrations: [], notes: [], users: [] }; // Return default empty structure with notes array
     }
     throw error; // Re-throw other errors
   }
 }
 
-async function writeDb(data: any) {
+async function writeDb(data: DbData) {
   await fs.writeFile(dbPath, JSON.stringify(data, null, 2));
 }
 
 export async function GET(request: Request) {
-  const db = await readDb();
+  const db: DbData = await readDb();
   
   // Get user ID from cookies
   const userId = request.headers.get('cookie')?.split(';').find(c => c.trim().startsWith('user_id='))?.split('=')[1];
@@ -34,7 +64,7 @@ export async function GET(request: Request) {
   }
 
   // Find user in database
-  const user = db.users?.find((u: any) => u.id === userId);
+  const user: User | undefined = db.users?.find((u: User) => u.id === userId);
   
   if (!user || !user.tokens) {
     return NextResponse.json({ message: 'Google Calendar not connected for this user' }, { status: 400 });
@@ -49,7 +79,7 @@ export async function GET(request: Request) {
   oauth2Client.setCredentials(user.tokens);
 
   // Add token refresh logic
-  oauth2Client.on('tokens', async (tokens) => {
+  oauth2Client.on('tokens', async (tokens: Credentials) => {
     if (tokens.refresh_token) {
       // Store the new refresh_token in your database
       user.tokens.refresh_token = tokens.refresh_token;

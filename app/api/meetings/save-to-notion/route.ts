@@ -19,13 +19,15 @@ export async function POST(request: Request) {
     const response = await notion.pages.create({
       parent: { database_id: databaseId },
       properties: {
-        title: [
-          {
-            text: {
-              content: `Meeting Summary: ${title}`,
+        'Name': {
+          title: [
+            {
+              text: {
+                content: `Meeting Summary: ${title}`,
+              },
             },
-          },
-        ],
+          ],
+        },
         Date: {
           date: {
             start: new Date(date).toISOString(),
@@ -67,7 +69,8 @@ export async function POST(request: Request) {
       ],
     });
 
-    return NextResponse.json({ notionUrl: response.url });
+    const notionUrl = `https://www.notion.so/${response.id.replace(/-/g, '')}`;
+    return NextResponse.json({ notionUrl });
 
   } catch (error) {
     console.error('Error creating Notion page:', error);

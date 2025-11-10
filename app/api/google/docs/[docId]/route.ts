@@ -2,26 +2,55 @@ import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
+import { Credentials } from 'google-auth-library';
 
 const dbPath = path.join(process.cwd(), 'data', 'db.json');
 
-async function readDb() {
+interface Note {
+  id: number;
+  title: string;
+  summary: string;
+}
+
+interface User {
+  id: string | null | undefined;
+  email: string | null | undefined;
+  name: string | null | undefined;
+  picture: string | null | undefined;
+  tokens: Credentials;
+  lastLogin: string;
+}
+
+interface Integration {
+  name: string;
+  userId: string | null | undefined;
+  connected: boolean;
+  tokens: Credentials;
+}
+
+interface DbData {
+  integrations: Integration[];
+  notes: Note[];
+  users: User[];
+}
+
+async function readDb(): Promise<DbData> {
   try {
     await fs.access(dbPath, fs.constants.F_OK);
     const fileContent = await fs.readFile(dbPath, 'utf-8');
     return JSON.parse(fileContent);
-  } catch (error: any) {
-    if (error.code === 'ENOENT') {
-      return { integrations: [], notes: [] };
+  } catch (error: unknown) {
+    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { integrations: [], notes: [], users: [] };
     }
     throw error;
   }
 }
 
-export async function GET(request: Request, { params }: any) {
-  const db = await readDb();
-  const googleIntegration = db.integrations.find(
-    (integration: any) => integration.name === 'Google'
+export async function GET(request: Request, context: any) {
+  const db: DbData = await readDb();
+  const googleIntegration: Integration | undefined = db.integrations.find(
+    (integration: Integration) => integration.name === 'Google'
   );
 
   if (!googleIntegration || !googleIntegration.tokens) {
@@ -40,7 +69,7 @@ export async function GET(request: Request, { params }: any) {
 
   try {
     const response = await docs.documents.get({
-      documentId: params.docId,
+      documentId: context.params.docId,
     });
     return NextResponse.json(response.data);
   } catch (error) {
