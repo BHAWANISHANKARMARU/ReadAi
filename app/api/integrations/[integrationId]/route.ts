@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 
@@ -22,10 +22,10 @@ async function writeDb(data: any) {
 }
 
 export async function PUT(
-  request: Request,
-  { params }: { params: { integrationId: string } }
+  request: NextRequest,
+  context: { params: Promise<{ integrationId: string }> }
 ) {
-  const { integrationId } = await params;
+  const { integrationId } = await context.params;
   const { connected } = await request.json();
 
   const id = parseInt(integrationId, 10);
