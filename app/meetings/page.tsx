@@ -30,40 +30,55 @@ const MeetingsPage = () => {
       setLoading(true);
       setError(null);
       try {
-        const [calendarRes, extRes] = await Promise.all([
-          fetch('/api/google/meet'),
-          fetch('/api/meetings'),
-        ]);
+        // Check integration status first
+        const integRes = await fetch('/api/integrations');
+        const integrations = integRes.ok ? await integRes.json() : [];
+        const googleConnected = Array.isArray(integrations)
+          ? !!integrations.find((i: any) => i.name === 'Google' && i.connected)
+          : true;
 
         const list: Meeting[] = [];
 
-        if (calendarRes.ok) {
-          const cal = await calendarRes.json();
-          list.push(
-            ...cal.map((event: any) => ({
-              id: event.id,
-              title: event.name,
-              date: event.startTime,
-              participants: event.attendees?.length || 0,
-              meetingUrl: event.meetingUrl,
-              source: 'calendar' as const,
-            })),
-          );
-        }
+        if (googleConnected) {
+          const [calendarRes, extRes] = await Promise.all([
+            fetch('/api/google/meet'),
+            fetch('/api/meetings'),
+          ]);
 
-        if (extRes.ok) {
-          const ext = await extRes.json();
-          list.push(
-            ...ext.map((m: any) => ({
-              id: m.id,
-              title: m.title,
-              date: m.meetingEndTimestamp || m.date,
-              participants: 0,
-              transcript: m.transcript,
-              summary: m.summary,
-              source: 'extension' as const,
-            })),
-          );
+          if (calendarRes.ok) {
+            const cal = await calendarRes.json();
+            list.push(
+              ...cal.map((event: any) => ({
+                id: event.id,
+                title: event.name,
+                date: event.startTime,
+                participants: event.attendees?.length || 0,
+                meetingUrl: event.meetingUrl,
+                source: 'calendar' as const,
+              })),
+            );
+          }
+
+          if (extRes.ok) {
+            const ext = await extRes.json();
+            list.push(
+              ...ext.map((m: any) => ({
+                id: m.id,
+                title: m.title,
+                date: m.meetingEndTimestamp || m.date,
+                participants: 0,
+                transcript: m.transcript,
+                summary: m.summary,
+                source: 'extension' as const,
+              })),
+            );
+          }
+        } else {
+          // Respect disconnected state
+          setMeetings([]);
+          setLoading(false);
+          setError('Google integration is disconnected. Connect it in Integrations.');
+          return;
         }
 
         if (!calendarRes.ok && !extRes.ok) {
