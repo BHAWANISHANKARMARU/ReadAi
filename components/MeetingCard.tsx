@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Card from './Card';
-import { User, Clock, Calendar, FileText, Save } from 'lucide-react';
+import { User, Clock, FileText, Save } from 'lucide-react';
 import TranscriptModal from './TranscriptModal';
 
 interface TranscriptEntry {
@@ -113,13 +113,11 @@ interface SaveButtonsProps {
 
 const SaveButtons = ({ title, date, participants, transcript, summary }: SaveButtonsProps) => {
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState('');
   const [googleDocsUrl, setGoogleDocsUrl] = useState('');
   const [notionUrl, setNotionUrl] = useState('');
 
   const saveToGoogleDoc = async () => {
     setIsSaving(true);
-    setError('');
     try {
       const res = await fetch('/api/meetings/save-to-google-doc', {
         method: 'POST',
@@ -140,17 +138,18 @@ const SaveButtons = ({ title, date, participants, transcript, summary }: SaveBut
         setGoogleDocsUrl(googleDocsUrl);
       } else {
         const errorData = await res.json();
-        setError(errorData.message || 'Failed to save to Google Docs');
+        // Handle error, e.g., display to user
+        console.error('Failed to save to Google Docs:', errorData.message);
       }
     } catch (error) {
-      setError('An unexpected error occurred.');
+      // Handle unexpected error
+      console.error('An unexpected error occurred:', error);
     }
     setIsSaving(false);
   };
 
   const saveToNotion = async () => {
     setIsSaving(true);
-    setError('');
     try {
       const res = await fetch('/api/meetings/save-to-notion', {
         method: 'POST',
@@ -171,10 +170,12 @@ const SaveButtons = ({ title, date, participants, transcript, summary }: SaveBut
         setNotionUrl(notionUrl);
       } else {
         const errorData = await res.json();
-        setError(errorData.message || 'Failed to save to Notion');
+        // Handle error, e.g., display to user
+        console.error('Failed to save to Notion:', errorData.message);
       }
     } catch (error) {
-      setError('An unexpected error occurred.');
+      // Handle unexpected error
+      console.error('An unexpected error occurred:', error);
     }
     setIsSaving(false);
   };
@@ -223,11 +224,7 @@ const SaveButtons = ({ title, date, participants, transcript, summary }: SaveBut
           </button>
         )}
       </div>
-      {error && (
-        <div className="mt-2 text-sm text-red-600">
-          <span>{error}</span>
-        </div>
-      )}
+
     </div>
   );
 };

@@ -1,7 +1,8 @@
 'use client';
 
 import { useSearch } from '@/app/context/SearchContext';
-import { Bell, User, Search } from 'lucide-react';
+import { Bell, Search } from 'lucide-react';
+import Image from 'next/image';
 
 const Header = ({ title }: { title: string }) => {
   const { setSearchQuery } = useSearch();
@@ -20,7 +21,7 @@ const Header = ({ title }: { title: string }) => {
           />
         </div>
         <Bell className="text-app" />
-        <img src="/user-avatar.png" alt="User Avatar" className="rounded-circle" style={{ width: 32, height: 32 }} />
+        <Image src="/user-avatar.png" alt="User Avatar" className="rounded-circle" width={32} height={32} />
       </div>
     </header>
   );

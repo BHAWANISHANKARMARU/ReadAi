@@ -12,6 +12,7 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "custom-extension/**", // Ignore the custom-extension directory
   ]),
 ]);
 
