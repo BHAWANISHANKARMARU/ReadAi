@@ -10,13 +10,25 @@ interface Meeting {
   title: string;
   date: string;
   participants: number;
-  transcripts?: any[];
-  transcript?: string | any[];
+  transcript?: string;
   summary?: string;
   duration?: number;
   meetingUrl?: string;
   googleDocsUrl?: string | null;
   source?: 'calendar' | 'extension';
+}
+
+// Re-using the Integration interface defined earlier
+interface Integration {
+  name: string;
+  userId?: string | null; // Make userId optional
+  connected: boolean;
+  // tokens?: Credentials; // No need for Credentials here as it's not directly used
+}
+
+interface Attendee {
+  email: string;
+  responseStatus: string;
 }
 
 const MeetingsPage = () => {
@@ -32,10 +44,10 @@ const MeetingsPage = () => {
       try {
         // Check integration status first
         const integRes = await fetch('/api/integrations');
-        const integrations = integRes.ok ? await integRes.json() : [];
+        const integrations: Integration[] = integRes.ok ? await integRes.json() : [];
         const googleConnected = Array.isArray(integrations)
-          ? !!integrations.find((i: any) => i.name === 'Google' && i.connected)
-          : true;
+          ? !!integrations.find((i: Integration) => i.name === 'Google' && i.connected)
+          : false;
 
         const list: Meeting[] = [];
 
@@ -48,9 +60,9 @@ const MeetingsPage = () => {
           if (calendarRes.ok) {
             const cal = await calendarRes.json();
             list.push(
-              ...cal.map((event: any) => ({
+              ...cal.map((event: { id: string; summary: string; startTime: string; attendees: Attendee[]; meetingUrl: string; }) => ({
                 id: event.id,
-                title: event.name,
+                title: event.summary,
                 date: event.startTime,
                 participants: event.attendees?.length || 0,
                 meetingUrl: event.meetingUrl,
@@ -69,7 +81,7 @@ const MeetingsPage = () => {
           if (extRes.ok) {
             const ext = await extRes.json();
             list.push(
-              ...ext.map((m: any) => ({
+              ...ext.map((m: { id: string; title: string; meetingEndTimestamp: string; date: string; transcript: string; summary: string; }) => ({
                 id: m.id,
                 title: m.title,
                 date: m.meetingEndTimestamp || m.date,

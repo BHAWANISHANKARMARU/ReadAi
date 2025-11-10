@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearch } from '@/app/context/SearchContext';
 
 interface Report {
@@ -19,21 +19,16 @@ interface ReportTableProps {
 
 const ReportTable = ({ reports }: ReportTableProps) => {
   const { searchQuery } = useSearch();
-  const [filteredReports, setFilteredReports] = useState<Report[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
 
-  useEffect(() => {
-    setFilteredReports(reports);
-    setLastRefreshed(new Date().toLocaleTimeString());
-  }, [reports]);
-
-  useEffect(() => {
+  const filteredReports = useMemo(() => {
     const lowercasedQuery = searchQuery.toLowerCase();
-    const filtered = reports.filter((report) =>
+    return reports.filter((report) =>
       report.title.toLowerCase().includes(lowercasedQuery)
     );
-    setFilteredReports(filtered);
   }, [searchQuery, reports]);
+
+
 
   const handleRefresh = () => {
     // In a real app, you would re-fetch data here from the parent component

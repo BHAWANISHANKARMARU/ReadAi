@@ -47,7 +47,7 @@ async function readDb(): Promise<DbData> {
   }
 }
 
-export async function GET(request: Request, context: any) {
+export async function GET(request: Request, context: { params: Promise<{ docId: string }> }) {
   const db: DbData = await readDb();
   const googleIntegration: Integration | undefined = db.integrations.find(
     (integration: Integration) => integration.name === 'Google'
@@ -68,8 +68,9 @@ export async function GET(request: Request, context: any) {
   const docs = google.docs({ version: 'v1', auth: oauth2Client });
 
   try {
+    const resolvedParams = await context.params;
     const response = await docs.documents.get({
-      documentId: context.params.docId,
+      documentId: resolvedParams.docId,
     });
     return NextResponse.json(response.data);
   } catch (error) {

@@ -3,10 +3,32 @@ import Header from '@/components/Header';
 import Card from '@/components/Card';
 import { useEffect, useState } from 'react';
 
+interface CalendarEvent {
+  id: string;
+  summary?: string;
+  name?: string;
+  start?: {
+    dateTime?: string;
+    date?: string;
+  };
+}
+
+interface Meeting {
+  id: string;
+  name: string;
+  startTime: string;
+}
+
+interface Email {
+  id: string;
+  title: string;
+  date: string;
+}
+
 const DashboardPage = () => {
-  const [calendarEvents, setCalendarEvents] = useState<any[]>([]);
-  const [meetings, setMeetings] = useState<any[]>([]);
-  const [emails, setEmails] = useState<any[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [emails, setEmails] = useState<Email[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,11 +64,11 @@ const DashboardPage = () => {
               <h5 className="mb-1">Upcoming Calendar Events</h5>
               <p className="text-secondary small mb-3">Next 7 shown</p>
               <ul className="list-unstyled m-0">
-                {calendarEvents.slice(0, 7).map((e: any) => (
+                {calendarEvents.slice(0, 7).map((e: CalendarEvent) => (
                   <li key={e.id || e.start?.dateTime} className="mb-2">
                     <span className="fw-semibold">{e.summary || e.name || 'Event'}</span>
                     <div className="small text-secondary">
-                      {new Date(e.start?.dateTime || e.start?.date || Date.now()).toLocaleString()}
+                      {new Date(e.start?.dateTime || e.start?.date || new Date().toISOString()).toLocaleString()}
                     </div>
                   </li>
                 ))}
@@ -59,7 +81,7 @@ const DashboardPage = () => {
               <h5 className="mb-1">Recent Google Meet meetings</h5>
               <p className="text-secondary small mb-3">{meetings.length} found</p>
               <ul className="list-unstyled m-0">
-                {meetings.slice(0, 7).map((m: any) => (
+                {meetings.slice(0, 7).map((m: Meeting) => (
                   <li key={m.id} className="mb-2">
                     <span className="fw-semibold">{m.name}</span>
                     <div className="small text-secondary">{new Date(m.startTime).toLocaleString()}</div>
@@ -74,7 +96,7 @@ const DashboardPage = () => {
               <h5 className="mb-1">Latest Gmail items</h5>
               <p className="text-secondary small mb-3">{emails.length} fetched</p>
               <ul className="list-unstyled m-0">
-                {emails.slice(0, 7).map((r: any) => (
+                {emails.slice(0, 7).map((r: Email) => (
                   <li key={r.id} className="mb-2">
                     <span className="fw-semibold">{r.title}</span>
                     <div className="small text-secondary">{new Date(r.date).toLocaleString()}</div>

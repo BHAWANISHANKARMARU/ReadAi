@@ -14,7 +14,7 @@ interface Meeting {
   title: string;
   date: string;
   participants: number;
-  transcripts?: any[];
+
   transcript?: string | TranscriptEntry[];
   summary?: string;
   duration?: number;

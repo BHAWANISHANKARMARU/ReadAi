@@ -1,15 +1,11 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
-
-const dbPath = path.join(process.cwd(), 'data', 'db.json');
-
-import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
 import { Credentials } from 'google-auth-library';
 
 const dbPath = path.join(process.cwd(), 'data', 'db.json');
+
+
 
 interface Note {
   id: number;
@@ -45,7 +41,7 @@ interface Meeting {
   source: 'extension';
   meetingSoftware: string;
   lastUpdated: string;
-  raw: any; // Raw payload can be anything
+  raw: Record<string, unknown>; // Raw payload can be anything
 }
 
 interface DbData {

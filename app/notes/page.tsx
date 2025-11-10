@@ -11,6 +11,12 @@ interface Note {
   summary?: string;
 }
 
+interface GmailReport {
+  id: string;
+  title: string;
+  snippet: string;
+}
+
 const NotesPage = () => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,14 +36,14 @@ const NotesPage = () => {
         const notesData = notesRes.ok ? await notesRes.json() : [];
         const gmailData = gmailRes.ok ? await gmailRes.json() : [];
         // Map gmail subjects/snippets to quick notes
-        const gmailNotes = (gmailData || []).map((g: any) => ({
+        const gmailNotes = (gmailData || []).map((g: GmailReport) => ({
           id: `gmail-${g.id}`,
           title: g.title,
           summary: g.snippet,
         }));
         setNotes([...notesData, ...gmailNotes]);
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'An unknown error occurred');
         setNotes([]);
       } finally {
         setLoading(false);
