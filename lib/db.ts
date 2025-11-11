@@ -102,7 +102,7 @@ export async function createOrUpdateMeeting({
   const now = new Date();
   const result = await sql`
     INSERT INTO meetings (external_id, user_google_id, title, meeting_timestamp, transcript, summary, source, meeting_software, raw_payload, created_at, updated_at)
-    VALUES (${externalId}, ${userGoogleId}, ${title}, ${meetingTimestamp}, ${transcript}, ${summary}, ${source}, ${meetingSoftware}, ${JSON.stringify(rawPayload)}, ${now.toISOString()}, ${now.toISOString()})
+    VALUES (${externalId}, ${userGoogleId}, ${title}, ${meetingTimestamp.toISOString()}, ${transcript}, ${summary}, ${source}, ${meetingSoftware}, ${JSON.stringify(rawPayload)}, ${now.toISOString()}, ${now.toISOString()})
     ON CONFLICT (external_id)
     DO UPDATE SET
       user_google_id = EXCLUDED.user_google_id,
@@ -147,7 +147,7 @@ export async function createNote({
   const now = new Date();
   const result = await sql`
     INSERT INTO notes (user_google_id, title, summary, created_at, updated_at)
-    VALUES (${userGoogleId}, ${title}, ${summary}, ${now}, ${now})
+    VALUES (${userGoogleId}, ${title}, ${summary}, ${now.toISOString()}, ${now.toISOString()})
     RETURNING *;
   `;
   return result.rows[0] as Note;
