@@ -1,87 +1,58 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
-import { Credentials } from 'google-auth-library';
+import { cookies } from 'next/headers';
+import { getNotesForUser, createNote } from '@/lib/db';
 
-const dbPath = path.join(process.cwd(), 'data', 'db.json');
-
-
-
-interface Note {
-  id: string; // Changed to string as Date.now().toString() is used
-  title: string;
-  summary: string;
-}
-
-interface User {
-  id: string | null | undefined;
-  email: string | null | undefined;
-  name: string | null | undefined;
-  picture: string | null | undefined;
-  tokens: Credentials;
-  lastLogin: string;
-}
-
-interface Integration {
-  name: string;
-  userId?: string | null; // Make userId optional
-  connected: boolean;
-  tokens?: Credentials; // Make tokens optional
-}
-
-interface Meeting {
-  id: string;
-  title: string;
-  date: string;
-  meetingEndTimestamp: string;
-  transcript: string;
-  chatMessages: string;
-  summary: string;
-  userId: string | null;
-  source: 'extension';
-  meetingSoftware: string;
-  lastUpdated: string;
-  raw: Record<string, unknown>; // Raw payload can be anything
-}
-
-interface DbData {
-  integrations: Integration[];
-  notes: Note[];
-  users: User[];
-  meetings: Meeting[];
-}
-
-async function readDb(): Promise<DbData> {
+export async function GET() {
   try {
-    await fs.access(dbPath, fs.constants.F_OK); // Check if file exists
-    const fileContent = await fs.readFile(dbPath, 'utf-8');
-    return JSON.parse(fileContent);
-  } catch (error: unknown) {
-    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') { // File not found
-      return { integrations: [], notes: [], users: [], meetings: [] }; // Return default empty structure with notes array
+    const cookieStore = await cookies();
+    const userId = cookieStore.get('user_id')?.value;
+
+    if (!userId) {
+      return NextResponse.json({ message: 'User not authenticated' }, { status: 401 });
     }
-    throw error; // Re-throw other errors
+
+    const notes = await getNotesForUser(userId);
+    return NextResponse.json(notes);
+  } catch (error) {
+    console.error('Error fetching notes:', error);
+    const errorMessage =
+      error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json(
+      { message: 'Failed to fetch notes', error: errorMessage },
+      { status: 500 }
+    );
   }
 }
 
-async function writeDb(data: DbData) {
-  await fs.writeFile(dbPath, JSON.stringify(data, null, 2));
-}
-
-export async function GET() {
-  const db: DbData = await readDb();
-  return NextResponse.json(db.notes || []); // Return notes, or an empty array if none exist
-}
-
 export async function POST(request: Request) {
-  const newNote: Note = await request.json();
-  const db: DbData = await readDb();
+  try {
+    const cookieStore = await cookies();
+    const userId = cookieStore.get('user_id')?.value;
 
-  // Assign a unique ID to the new note
-  newNote.id = Date.now().toString(); // Simple unique ID for now
+    if (!userId) {
+      return NextResponse.json({ message: 'User not authenticated' }, { status: 401 });
+    }
 
-  db.notes.push(newNote);
-  await writeDb(db);
+    const { title, summary } = await request.json();
 
-  return NextResponse.json(newNote, { status: 201 });
+    if (!title) {
+      return NextResponse.json({ message: 'Title is required' }, { status: 400 });
+    }
+
+    const newNote = await createNote({
+      userGoogleId: userId,
+      title,
+      summary: summary || '',
+    });
+
+    return NextResponse.json(newNote, { status: 201 });
+  } catch (error) {
+    console.error('Error creating note:', error);
+    const errorMessage =
+      error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json(
+      { message: 'Failed to create note', error: errorMessage },
+      { status: 500 }
+    );
+  }
 }

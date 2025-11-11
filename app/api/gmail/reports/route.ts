@@ -1,101 +1,65 @@
-// Test comment to trigger recompilation
-import { google, Auth } from 'googleapis';
+import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
-
-const dbPath = path.join(process.cwd(), 'data', 'db.json');
-
-interface Integration {
-  name: string;
-  userId: string;
-  connected: boolean;
-  tokens: Auth.Credentials;
-}
-
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  picture: string;
-  tokens: Auth.Credentials;
-  lastLogin: string;
-}
-
-interface Note {
-  id: number;
-  title: string;
-  summary: string;
-}
-
-interface DbData {
-  integrations: Integration[];
-  notes: Note[];
-  users: User[];
-}
-
-async function readDb(): Promise<DbData> {
-  try {
-    await fs.access(dbPath, fs.constants.F_OK); // Check if file exists
-    const fileContent = await fs.readFile(dbPath, 'utf-8');
-    return JSON.parse(fileContent);
-  } catch (error: unknown) {
-    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') { // File not found
-      return { integrations: [], notes: [], users: [] }; // Return default empty structure with notes array
-    }
-    throw error; // Re-throw other errors
-  }
-}
-
-async function writeDb(data: DbData) {
-  await fs.writeFile(dbPath, JSON.stringify(data, null, 2));
-}
+import { cookies } from 'next/headers';
+import { findUserByGoogleId, upsertUser } from '@/lib/db';
 
 export async function GET(request: Request) {
-  const db: DbData = await readDb();
-  
-  // Get user ID from cookies
-  const userId = request.headers.get('cookie')?.split(';').find(c => c.trim().startsWith('user_id='))?.split('=')[1];
-  
+  const cookieStore = await cookies();
+  const userId = cookieStore.get('user_id')?.value;
+
   if (!userId) {
     return NextResponse.json({ message: 'User not authenticated' }, { status: 401 });
   }
 
-  // Find user in database
-  const user: User | undefined = db.users?.find((u: User) => u.id === userId);
-  
-  if (!user || !user.tokens) {
-    return NextResponse.json({ message: 'Google account not connected for this user' }, { status: 400 });
-  }
-
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    'http://localhost:3000/api/auth/google/callback'
-  );
-
-  oauth2Client.setCredentials(user.tokens);
-
-  // Add token refresh logic
-  oauth2Client.on('tokens', async (tokens: Auth.Credentials) => {
-    if (tokens.refresh_token) {
-      // Store the new refresh_token in your database
-      user.tokens.refresh_token = tokens.refresh_token;
-    }
-    // Update the access_token and expiry_date
-    user.tokens.access_token = tokens.access_token;
-    user.tokens.expiry_date = tokens.expiry_date;
-    user.lastLogin = new Date().toISOString(); // Update last login
-    await writeDb(db); // Save updated tokens to db.json
-    console.log('Google tokens refreshed and saved.');
-  });
-
-  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-
   try {
+    const user = await findUserByGoogleId(userId);
+
+    if (!user || !user.access_token) {
+      return NextResponse.json(
+        { message: 'Google account not connected or token missing' },
+        { status: 400 }
+      );
+    }
+
+    const url = new URL(request.url);
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXTAUTH_URL ||
+      `${url.protocol}//${url.host}`;
+    const normalizedBase = baseUrl.replace(/\/$/, '');
+
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      `${normalizedBase}/api/auth/google/callback`
+    );
+
+    oauth2Client.setCredentials({
+      access_token: user.access_token,
+      refresh_token: user.refresh_token,
+    });
+
+    // Listen for token refresh events
+    oauth2Client.on('tokens', async (tokens) => {
+      // A new access token was received.
+      // `tokens.refresh_token` will be undefined unless the user's session has
+      // been revoked and they are re-authenticating.
+      await upsertUser({
+        googleId: user.google_id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        accessToken: tokens.access_token!,
+        refreshToken: tokens.refresh_token || user.refresh_token, // Persist existing refresh token
+      });
+      console.log('Google tokens refreshed and saved.');
+    });
+
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
     const response = await gmail.users.messages.list({
       userId: 'me',
-      maxResults: 10, // Fetch up to 10 recent emails
+      maxResults: 10,
     });
 
     const messages = response.data.messages;
@@ -113,17 +77,19 @@ export async function GET(request: Request) {
         });
 
         const subjectHeader = msg.data.payload?.headers?.find(
-          (header) => header.name === 'Subject'
+          (h) => h.name === 'Subject'
         );
         const dateHeader = msg.data.payload?.headers?.find(
-          (header) => header.name === 'Date'
+          (h) => h.name === 'Date'
         );
         const fromHeader = msg.data.payload?.headers?.find(
-          (header) => header.name === 'From'
+          (h) => h.name === 'From'
         );
 
         const fromEmail = fromHeader?.value || 'Unknown Sender';
-        const owner = fromEmail.includes('<') ? fromEmail.split('<')[0].trim() : fromEmail;
+        const owner = fromEmail.includes('<')
+          ? fromEmail.split('<')[0].trim()
+          : fromEmail;
 
         return {
           id: msg.data.id,
@@ -141,6 +107,11 @@ export async function GET(request: Request) {
     return NextResponse.json(gmailReports);
   } catch (error) {
     console.error('Error fetching Gmail reports:', error);
-    return NextResponse.json({ message: 'Error fetching Gmail reports' }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json(
+      { message: 'Error fetching Gmail reports', error: errorMessage },
+      { status: 500 }
+    );
   }
 }

@@ -1,80 +1,74 @@
 import { google } from 'googleapis';
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
-import { Credentials } from 'google-auth-library';
+import { cookies } from 'next/headers';
+import { findUserByGoogleId, upsertUser } from '@/lib/db';
 
-const dbPath = path.join(process.cwd(), 'data', 'db.json');
+export async function GET(
+  request: Request,
+  { params }: { params: { docId: string } }
+) {
+  const cookieStore = cookies();
+  const userId = cookieStore.get('user_id')?.value;
 
-interface Note {
-  id: number;
-  title: string;
-  summary: string;
-}
+  if (!userId) {
+    return NextResponse.json({ message: 'User not authenticated' }, { status: 401 });
+  }
 
-interface User {
-  id: string | null | undefined;
-  email: string | null | undefined;
-  name: string | null | undefined;
-  picture: string | null | undefined;
-  tokens: Credentials;
-  lastLogin: string;
-}
-
-interface Integration {
-  name: string;
-  userId: string | null | undefined;
-  connected: boolean;
-  tokens: Credentials;
-}
-
-interface DbData {
-  integrations: Integration[];
-  notes: Note[];
-  users: User[];
-}
-
-async function readDb(): Promise<DbData> {
   try {
-    await fs.access(dbPath, fs.constants.F_OK);
-    const fileContent = await fs.readFile(dbPath, 'utf-8');
-    return JSON.parse(fileContent);
-  } catch (error: unknown) {
-    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { integrations: [], notes: [], users: [] };
+    const user = await findUserByGoogleId(userId);
+
+    if (!user || !user.access_token) {
+      return NextResponse.json(
+        { message: 'Google account not connected or token missing' },
+        { status: 400 }
+      );
     }
-    throw error;
-  }
-}
 
-export async function GET(request: Request, context: { params: Promise<{ docId: string }> }) {
-  const db: DbData = await readDb();
-  const googleIntegration: Integration | undefined = db.integrations.find(
-    (integration: Integration) => integration.name === 'Google'
-  );
+    const url = new URL(request.url);
+    const baseUrl =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXTAUTH_URL ||
+      `${url.protocol}//${url.host}`;
+    const normalizedBase = baseUrl.replace(/\/$/, '');
 
-  if (!googleIntegration || !googleIntegration.tokens) {
-    return NextResponse.json({ message: 'Google account not connected' }, { status: 400 });
-  }
+    const oauth2Client = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      `${normalizedBase}/api/auth/google/callback`
+    );
 
-  const oauth2Client = new google.auth.OAuth2(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET,
-    'http://localhost:3000/api/auth/google/callback'
-  );
-
-  oauth2Client.setCredentials(googleIntegration.tokens);
-
-  const docs = google.docs({ version: 'v1', auth: oauth2Client });
-
-  try {
-    const resolvedParams = await context.params;
-    const response = await docs.documents.get({
-      documentId: resolvedParams.docId,
+    oauth2Client.setCredentials({
+      access_token: user.access_token,
+      refresh_token: user.refresh_token,
     });
+
+    // Listen for token refresh events
+    oauth2Client.on('tokens', async (tokens) => {
+      await upsertUser({
+        googleId: user.google_id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+        accessToken: tokens.access_token!,
+        refreshToken: tokens.refresh_token || user.refresh_token,
+      });
+      console.log('Google tokens refreshed and saved for Docs.');
+    });
+
+    const docs = google.docs({ version: 'v1', auth: oauth2Client });
+
+    const response = await docs.documents.get({
+      documentId: params.docId,
+    });
+
     return NextResponse.json(response.data);
   } catch (error) {
     console.error('Error fetching document:', error);
-    return NextResponse.json({ message: 'Error fetching document' }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json(
+      { message: 'Error fetching document', error: errorMessage },
+      { status: 500 }
+    );
   }
 }

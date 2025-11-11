@@ -1,93 +1,49 @@
 import { NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
-import { Credentials } from 'google-auth-library';
-
-const dbPath = path.join(process.cwd(), 'data', 'db.json');
-
-
-
-interface Note {
-  id: number;
-  title: string;
-  summary: string;
-}
-
-interface User {
-  id: string | null | undefined;
-  email: string | null | undefined;
-  name: string | null | undefined;
-  picture: string | null | undefined;
-  tokens: Credentials;
-  lastLogin: string;
-}
-
-interface Integration {
-  name: string;
-  userId?: string | null; // Make userId optional
-  connected: boolean;
-  tokens?: Credentials; // Make tokens optional
-}
-
-interface Meeting {
-  id: string;
-  title: string;
-  date: string;
-  meetingEndTimestamp: string;
-  transcript: string;
-  chatMessages: string;
-  summary: string;
-  userId: string | null;
-  source: 'extension';
-  meetingSoftware: string;
-  lastUpdated: string;
-  raw: Record<string, unknown>; // Raw payload can be anything
-}
-
-interface DbData {
-  integrations: Integration[];
-  notes: Note[];
-  users: User[];
-  meetings: Meeting[];
-}
-
-async function readDb(): Promise<DbData> {
-  try {
-    await fs.access(dbPath, fs.constants.F_OK);
-    const fileContent = await fs.readFile(dbPath, 'utf-8');
-    return JSON.parse(fileContent);
-  } catch (error: unknown) {
-    if (error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { integrations: [], notes: [], users: [], meetings: [] };
-    }
-    throw error;
-  }
-}
-
-async function writeDb(data: DbData) {
-  await fs.writeFile(dbPath, JSON.stringify(data, null, 2));
-}
+import { cookies } from 'next/headers';
+import { getMeetingsForUser, createOrUpdateMeeting } from '@/lib/db';
 
 export async function GET() {
-  const db: DbData = await readDb();
-  return NextResponse.json(db.meetings ?? []);
+  try {
+    const cookieStore = await cookies();
+    const userId = cookieStore.get('user_id')?.value;
+
+    if (!userId) {
+      return NextResponse.json({ message: 'User not authenticated' }, { status: 401 });
+    }
+
+    const meetings = await getMeetingsForUser(userId);
+    return NextResponse.json(meetings);
+  } catch (error) {
+    console.error('Error fetching meetings:', error);
+    const errorMessage =
+      error instanceof Error ? error.message : 'An unknown error occurred';
+    return NextResponse.json(
+      { message: 'Failed to fetch meetings', error: errorMessage },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(request: Request) {
   try {
     const payload = await request.json();
-    const db: DbData = await readDb();
+    const cookieStore = await cookies();
+    const userId = cookieStore.get('user_id')?.value;
+
+    if (!userId) {
+      return NextResponse.json({ message: 'User not authenticated' }, { status: 401 });
+    }
 
     // Normalize a few common fields the extension may send
-    const nowIso = new Date().toISOString();
-    const id = payload.id || crypto.randomUUID();
+    const now = new Date();
+    const externalId = payload.id || crypto.randomUUID();
     const meetingTitle =
       payload.meetingTitle || payload.title || payload.meeting_code || 'Meeting';
-    const endTs =
+    const meetingEndTimestamp =
       payload.meetingEndTimestamp ||
       payload.ended_at ||
       payload.timestamp ||
-      nowIso;
+      now.toISOString();
 
     const transcript =
       payload.transcript ||
@@ -96,37 +52,28 @@ export async function POST(request: Request) {
       payload.content ||
       '';
 
-    const record: Meeting = {
-      id,
+    const summary = payload.summary || '';
+
+    const record = await createOrUpdateMeeting({
+      externalId: externalId,
+      userGoogleId: userId,
       title: meetingTitle,
-      date: new Date(endTs).toLocaleString(),
-      meetingEndTimestamp: endTs,
-      transcript,
-      chatMessages: payload.chatMessages || '',
-      summary: payload.summary || '',
-      userId: payload.userId || null,
+      meetingTimestamp: new Date(meetingEndTimestamp),
+      transcript: transcript,
+      summary: summary,
       source: 'extension',
       meetingSoftware: payload.meetingSoftware || 'Google Meet',
-      lastUpdated: nowIso,
-      raw: payload,
-    };
+      rawPayload: payload,
+    });
 
-    db.meetings = Array.isArray(db.meetings) ? db.meetings : [];
-    // Avoid duplicates by id if provided by extension
-    const existingIndex = db.meetings.findIndex((m: Meeting) => m.id === record.id);
-    if (existingIndex >= 0) {
-      db.meetings[existingIndex] = { ...db.meetings[existingIndex], ...record };
-    } else {
-      db.meetings.push(record);
-    }
-    await writeDb(db);
-
-    return NextResponse.json({ ok: true, id: record.id }, { status: 201 });
-  } catch (error: unknown) {
+    return NextResponse.json({ ok: true, id: record.external_id }, { status: 201 });
+  } catch (error) {
     console.error('Error saving meeting from webhook:', error);
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { message: 'Failed to save meeting', error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 400 },
+      { message: 'Failed to save meeting', error: errorMessage },
+      { status: 400 }
     );
   }
 }
