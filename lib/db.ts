@@ -44,20 +44,17 @@ export async function upsertUser({
 }): Promise<User> {
   const now = new Date();
 
-  // If a refresh token is provided, include it in the update/insert.
-  // Otherwise, we avoid updating it, so we don't overwrite a valid
-  // refresh token with null.
   const result = await sql`
     INSERT INTO users (google_id, email, name, picture, access_token, refresh_token, last_login)
-    VALUES (${googleId}, ${email}, ${name}, ${picture}, ${accessToken}, ${refreshToken}, ${now})
+    VALUES (${googleId}, ${email}, ${name}, ${picture}, ${accessToken}, ${refreshToken}, ${now.toISOString()})
     ON CONFLICT (google_id)
     DO UPDATE SET
       email = EXCLUDED.email,
       name = EXCLUDED.name,
       picture = EXCLUDED.picture,
       access_token = EXCLUDED.access_token,
-      refresh_token = COALESCE(EXCLUDED.refresh_token, users.refresh_token),
-      last_login = EXCLUDED.last_login
+      refresh_token = COALESCE(${refreshToken}, users.refresh_token),
+      last_login = ${now.toISOString()}
     RETURNING *;
   `;
 
@@ -105,7 +102,7 @@ export async function createOrUpdateMeeting({
   const now = new Date();
   const result = await sql`
     INSERT INTO meetings (external_id, user_google_id, title, meeting_timestamp, transcript, summary, source, meeting_software, raw_payload, created_at, updated_at)
-    VALUES (${externalId}, ${userGoogleId}, ${title}, ${meetingTimestamp}, ${transcript}, ${summary}, ${source}, ${meetingSoftware}, ${JSON.stringify(rawPayload)}, ${now}, ${now})
+    VALUES (${externalId}, ${userGoogleId}, ${title}, ${meetingTimestamp}, ${transcript}, ${summary}, ${source}, ${meetingSoftware}, ${JSON.stringify(rawPayload)}, ${now.toISOString()}, ${now.toISOString()})
     ON CONFLICT (external_id)
     DO UPDATE SET
       user_google_id = EXCLUDED.user_google_id,
@@ -116,7 +113,7 @@ export async function createOrUpdateMeeting({
       source = EXCLUDED.source,
       meeting_software = EXCLUDED.meeting_software,
       raw_payload = EXCLUDED.raw_payload,
-      updated_at = ${now}
+      updated_at = ${now.toISOString()}
     RETURNING *;
   `;
   return result.rows[0] as Meeting;

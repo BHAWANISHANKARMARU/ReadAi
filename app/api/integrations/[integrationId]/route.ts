@@ -3,12 +3,15 @@ import { cookies } from 'next/headers';
 import { deleteUserByGoogleId } from '@/lib/db';
 
 export async function PUT(
-  request: NextRequest,
-  { params }: { params: { integrationId: string } }
+  request: NextRequest
 ) {
   try {
-    const { integrationId } = params;
+    const integrationId = request.nextUrl.pathname.split('/').pop();
     const { connected } = await request.json();
+
+    if (!integrationId) {
+      return NextResponse.json({ message: 'Integration ID not found' }, { status: 400 });
+    }
 
     const id = parseInt(integrationId, 10);
     const cookieStore = await cookies();

@@ -1,13 +1,18 @@
-import { google } from 'googleapis';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { findUserByGoogleId, upsertUser } from '@/lib/db';
+import { google } from 'googleapis';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { docId: string } }
+  request: NextRequest
 ) {
-  const cookieStore = cookies();
+  const docId = request.nextUrl.pathname.split('/').pop();
+
+  if (!docId) {
+    return NextResponse.json({ message: 'Doc ID not found' }, { status: 400 });
+  }
+
+  const cookieStore = await cookies();
   const userId = cookieStore.get('user_id')?.value;
 
   if (!userId) {
@@ -58,7 +63,7 @@ export async function GET(
     const docs = google.docs({ version: 'v1', auth: oauth2Client });
 
     const response = await docs.documents.get({
-      documentId: params.docId,
+      documentId: docId,
     });
 
     return NextResponse.json(response.data);

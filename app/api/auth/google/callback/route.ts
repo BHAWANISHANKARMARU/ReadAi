@@ -40,7 +40,7 @@ export async function GET(request: Request) {
       name: userInfo.data.name,
       picture: userInfo.data.picture,
       accessToken: tokens.access_token!,
-      refreshToken: tokens.refresh_token,
+      refreshToken: tokens.refresh_token ?? undefined,
     });
 
     // Create response and set cookies
