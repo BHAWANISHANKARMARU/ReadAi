@@ -21,9 +21,7 @@ export async function PUT(
     // Connecting is handled by the /api/auth/google flow.
     // We only care about Google (ID 1) and when connected is false.
     if (id === 1 && connected === false && userId) {
-      await deleteUserByGoogleId(userId);
-
-      // Clear cookies to log the user out
+      // Only clear cookies to log the user out, do not delete user data from the database.
       cookieStore.delete('user_id');
       cookieStore.delete('user_email');
 
