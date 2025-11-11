@@ -92,6 +92,11 @@ export async function GET(request: Request) {
       db.users = [];
     }
 
+    // Initialize integrations array if it doesn't exist
+    if (!db.integrations) {
+      db.integrations = [];
+    }
+
     // Find or create user
     const userEmail = userInfo.data.email;
     let user = db.users.find((u: User) => u.email === userEmail);
