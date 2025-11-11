@@ -19,6 +19,7 @@ const IntegrationCard = ({
   const [loading, setLoading] = useState(false);
 
   const handleClick = async () => {
+    if (loading) return;
     setLoading(true);
 
     if (name === 'Google' && !connected) {
@@ -26,35 +27,48 @@ const IntegrationCard = ({
       return;
     }
 
-    const res = await fetch(`/api/integrations/${id}`,
-      {
+    try {
+      const res = await fetch(`/api/integrations/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ connected: !connected }),
+      });
+
+      if (res.status === 401) {
+        alert('Please connect your Google account first.');
+        return;
       }
-    );
-    const data = await res.json();
-    onConnectionChange(id, data.connected);
-    setLoading(false);
+
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || 'Failed to update integration.');
+      }
+
+      const data = await res.json();
+      onConnectionChange(id, data.connected);
+    } catch (error) {
+      console.error('Error updating integration:', error);
+      alert('Something went wrong while updating this integration. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <Card>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center">
+      <div className="d-flex align-items-center justify-content-between">
+        <div className="d-flex align-items-center gap-3">
           {icon}
-          <h3 className="text-xl font-bold ml-4">{name}</h3>
+          <h3 className="h5 m-0">{name}</h3>
         </div>
         <button
-          className={`px-4 py-2 rounded-lg text-white ${
-            connected ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-500 hover:bg-blue-600'
-          }`}
+          className={`btn ${connected ? 'btn-outline-danger' : 'btn-primary'}`}
           onClick={handleClick}
           disabled={loading}
         >
-          {loading ? 'Loading...' : connected ? 'Disconnect' : 'Connect'}
+          {loading ? 'Please wait…' : connected ? 'Disconnect' : 'Connect'}
         </button>
       </div>
     </Card>

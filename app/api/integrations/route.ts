@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import fs from 'fs/promises';
 import path from 'path';
 import { Credentials } from 'google-auth-library';
@@ -48,33 +49,27 @@ async function readDb(): Promise<DbData> {
   }
 }
 
+const defaultIntegrations = [
+  { id: 1, name: 'Google' },
+  { id: 2, name: 'Zoom' },
+  { id: 3, name: 'Outlook' },
+];
+
 export async function GET() {
   const db: DbData = await readDb();
-  const defaultIntegrations = [
-    {
-      id: 1,
-      name: 'Google',
-      connected: false,
-    },
-    {
-      id: 2,
-      name: 'Zoom',
-      connected: false,
-    },
-    {
-      id: 3,
-      name: 'Outlook',
-      connected: false,
-    },
-  ];
+  const cookieStore = await cookies();
+  const userId = cookieStore.get('user_id')?.value ?? null;
 
-  const integrations = defaultIntegrations.map((defaultIntegration) => {
+  const integrations = defaultIntegrations.map(({ id, name }) => {
     const dbIntegration = (db.integrations || []).find(
-      (i: Integration) => i.name === defaultIntegration.name
+      (i: Integration) =>
+        i.name === name &&
+        (userId ? i.userId === userId : !i.userId)
     );
     return {
-      ...defaultIntegration,
-      connected: dbIntegration ? dbIntegration.connected : false,
+      id,
+      name,
+      connected: dbIntegration ? !!dbIntegration.connected : false,
     };
   });
 

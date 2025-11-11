@@ -13,12 +13,26 @@ interface Integration {
 
 const IntegrationsPage = () => {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchIntegrations = async () => {
-      const res = await fetch('/api/integrations');
-      const data = await res.json();
-      setIntegrations(data);
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch('/api/integrations', { cache: 'no-store' });
+        if (!res.ok) {
+          throw new Error('Failed to load integrations');
+        }
+        const data = await res.json();
+        setIntegrations(data);
+      } catch (err) {
+        console.error('Error fetching integrations:', err);
+        setError('Unable to load integrations right now. Please refresh the page.');
+      } finally {
+        setLoading(false);
+      }
     };
     fetchIntegrations();
   }, []);
@@ -44,20 +58,41 @@ const IntegrationsPage = () => {
     }
   };
 
+  const googleIntegration = integrations.find((integration) => integration.name === 'Google');
+
   return (
-    <div className="flex-1 p-10">
+    <div className="flex-1 p-4 overflow-y-auto">
       <Header title="Integrations" />
-      <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {integrations.map((integration: Integration) => (
-          <IntegrationCard
-            key={integration.id}
-            id={integration.id}
-            name={integration.name}
-            icon={getIcon(integration.name)}
-            connected={integration.connected}
-            onConnectionChange={handleConnectionChange}
-          />
-        ))}
+      <div className="mt-3">
+        {error && (
+          <div className="alert alert-danger" role="alert">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && googleIntegration && !googleIntegration.connected && (
+          <div className="alert alert-warning" role="alert">
+            Connect your Google account to sync meetings, notes, and reports automatically.
+          </div>
+        )}
+
+        {loading ? (
+          <div className="text-secondary">Loading integrations…</div>
+        ) : (
+          <div className="row g-3">
+            {integrations.map((integration: Integration) => (
+              <div key={integration.id} className="col-12 col-md-6 col-lg-4">
+                <IntegrationCard
+                  id={integration.id}
+                  name={integration.name}
+                  icon={getIcon(integration.name)}
+                  connected={integration.connected}
+                  onConnectionChange={handleConnectionChange}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

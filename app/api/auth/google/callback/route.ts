@@ -52,6 +52,11 @@ async function writeDb(data: DbData) {
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXTAUTH_URL ||
+    `${url.protocol}//${url.host}`;
+  const normalizedBase = baseUrl.replace(/\/$/, '');
   const code = url.searchParams.get('code');
 
   if (!code) {
@@ -61,7 +66,7 @@ export async function GET(request: Request) {
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    'http://localhost:3000/api/auth/google/callback'
+    `${normalizedBase}/api/auth/google/callback`
   );
 
   const { tokens } = await oauth2Client.getToken(code);
@@ -128,7 +133,7 @@ export async function GET(request: Request) {
   await writeDb(db);
 
   // Create response with user session cookie
-  const response = NextResponse.redirect(new URL('/integrations', request.url).toString());
+  const response = NextResponse.redirect(`${normalizedBase}/integrations`);
   response.cookies.set('user_id', userInfo.data.id || '', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',

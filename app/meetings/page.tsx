@@ -35,68 +35,79 @@ const MeetingsPage = () => {
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const { searchQuery } = useSearch();
 
   useEffect(() => {
     const fetchMeetings = async () => {
       setLoading(true);
       setError(null);
+      setInfoMessage(null);
       try {
-        // Check integration status first
+        // Check integration status first (only gates calendar fetch, not extension)
         const integRes = await fetch('/api/integrations');
         const integrations: Integration[] = integRes.ok ? await integRes.json() : [];
         const googleConnected = Array.isArray(integrations)
           ? !!integrations.find((i: Integration) => i.name === 'Google' && i.connected)
           : false;
 
+        console.log('Google Connected Status:', googleConnected);
+
+        if (!googleConnected) {
+          setMeetings([]);
+          setError('Google integration is disconnected. Connect it in Integrations.');
+          setLoading(false);
+          return;
+        }
+
         const list: Meeting[] = [];
 
-        if (googleConnected) {
-          const [calendarRes, extRes] = await Promise.all([
-            fetch('/api/google/meet'),
-            fetch('/api/meetings'),
-          ]);
+        const [calendarRes, extRes] = await Promise.all([
+          fetch('/api/google/meet'),
+          fetch('/api/meetings'),
+        ]);
 
-          if (calendarRes.ok) {
-            const cal = await calendarRes.json();
-            list.push(
-              ...cal.map((event: { id: string; summary: string; startTime: string; attendees: Attendee[]; meetingUrl: string; }) => ({
-                id: event.id,
-                title: event.summary,
-                date: event.startTime,
-                participants: event.attendees?.length || 0,
-                meetingUrl: event.meetingUrl,
-                source: 'calendar' as const,
-              })),
-            );
-          }
+        console.log('Calendar API Response:', calendarRes);
+        console.log('Extension API Response:', extRes);
 
-          if (!calendarRes.ok && !extRes.ok) {
-            const data = await calendarRes.json().catch(() => ({}));
-            setError(data.message || 'Failed to fetch meetings');
-            setMeetings([]);
-            return;
-          }
-
-          if (extRes.ok) {
-            const ext = await extRes.json();
-            list.push(
-              ...ext.map((m: { id: string; title: string; meetingEndTimestamp: string; date: string; transcript: string; summary: string; }) => ({
-                id: m.id,
-                title: m.title,
-                date: m.meetingEndTimestamp || m.date,
-                participants: 0,
-                transcript: m.transcript,
-                summary: m.summary,
-                source: 'extension' as const,
-              })),
-            );
-          }
+        if (calendarRes.ok) {
+          const cal = await calendarRes.json();
+          console.log('Calendar Data:', cal);
+          list.push(
+            ...cal.map((event: { id: string; summary?: string; startTime: string; attendees: Attendee[]; meetingUrl: string; }) => ({
+              id: event.id,
+              title: event.summary || 'Untitled Meeting',
+              date: event.startTime,
+              participants: event.attendees?.length || 0,
+              meetingUrl: event.meetingUrl,
+              source: 'calendar' as const,
+            })),
+          );
         } else {
-          // Respect disconnected state
+          console.error('Calendar API Error:', await calendarRes.text());
+        }
+
+        if (extRes.ok) {
+          const ext = await extRes.json();
+          console.log('Extension Data:', ext);
+          list.push(
+            ...ext.map((m: { id: string; title?: string; meetingEndTimestamp: string; date: string; transcript: string; summary: string; }) => ({
+              id: m.id,
+              title: m.title || 'Meeting transcript',
+              date: m.meetingEndTimestamp || m.date,
+              participants: 0,
+              transcript: m.transcript,
+              summary: m.summary,
+              source: 'extension' as const,
+            })),
+          );
+        } else {
+          console.error('Extension API Error:', await extRes.text());
+        }
+
+        if (!calendarRes.ok && !extRes.ok) {
+          setError('Failed to fetch meetings');
           setMeetings([]);
-          setLoading(false);
-          setError('Google integration is disconnected. Connect it in Integrations.');
           return;
         }
 
@@ -107,6 +118,9 @@ const MeetingsPage = () => {
         );
 
         setMeetings(list);
+        if (list.length === 0) {
+          setInfoMessage('No meetings yet. Start a new Google Meet to see it here.');
+        }
       } catch (err) {
         console.error('Error fetching meetings:', err);
         setError('Failed to fetch meetings');
@@ -123,7 +137,7 @@ const MeetingsPage = () => {
   }, []);
 
   const filteredMeetings = meetings.filter((meeting) =>
-    meeting.title.toLowerCase().includes(searchQuery.toLowerCase())
+    (meeting.title || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   return (
@@ -135,9 +149,16 @@ const MeetingsPage = () => {
             <p className="text-secondary">Loading meetings...</p>
           </div>
         ) : error ? (
-          <div className="text-center py-5">
-            <p className="text-danger mb-2">{error}</p>
-            <p className="small text-secondary">Please connect your Google account in the Integrations page</p>
+          <div className="d-flex justify-content-center py-4">
+            <div className="alert alert-warning text-start" role="alert">
+              {error}
+            </div>
+          </div>
+        ) : infoMessage ? (
+          <div className="d-flex justify-content-center py-4">
+            <div className="alert alert-info mb-0" role="alert">
+              {infoMessage}
+            </div>
           </div>
         ) : (
           <div className="row g-3">

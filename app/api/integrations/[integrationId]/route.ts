@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 import fs from 'fs/promises';
 import path from 'path';
 import { Credentials } from 'google-auth-library';
@@ -62,16 +63,29 @@ export async function PUT(
   const id = parseInt(integrationId, 10);
   const db: DbData = await readDb();
   db.integrations = Array.isArray(db.integrations) ? db.integrations : [];
+  db.users = Array.isArray(db.users) ? db.users : [];
+  db.notes = Array.isArray(db.notes) ? db.notes : [];
+
+  const cookieStore = await cookies();
+  const userId = cookieStore.get('user_id')?.value ?? null;
+  if (!userId) {
+    return NextResponse.json({ message: 'User not authenticated' }, { status: 401 });
+  }
 
   // Map ids to names like our GET route (1: Google, 2: Zoom, 3: Outlook)
   const idToName: Record<number, string> = { 1: 'Google', 2: 'Zoom', 3: 'Outlook' };
   const name = idToName[id] ?? 'Google';
 
-  const idx = db.integrations.findIndex((i: Integration) => i.name === name);
+  const idx = db.integrations.findIndex(
+    (i: Integration) => i.name === name && i.userId === userId
+  );
   if (idx >= 0) {
     db.integrations[idx].connected = !!connected;
+    if (!connected) {
+      delete db.integrations[idx].tokens;
+    }
   } else {
-    db.integrations.push({ name, connected: !!connected });
+    db.integrations.push({ name, userId, connected: !!connected });
   }
 
   // Optional safety: if disconnecting Google, we don't delete tokens (to avoid breakage),
