@@ -1,24 +1,33 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from "next/server";
+import { GoogleGenAI } from "@google/genai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const ai = new GoogleGenAI({});
 
-export async function POST(request: Request) {
-  const { transcript } = await request.json();
-
-  if (!transcript) {
-    return NextResponse.json({ message: 'Transcript is required' }, { status: 400 });
-  }
+export async function POST(req: NextRequest) {
+  const { transcript } = await req.json();
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-    const prompt = `Summarize the following meeting transcript:\n\n${transcript}`;
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const summary = response.text();
+
+    const prompt = `
+      You are an AI meeting assistant. Summarize this Google Meet transcript clearly.
+      Include:
+      - Key discussion points
+      - Important decisions
+      - Action items
+      Transcript:
+      ${transcript}
+    `;
+
+    const result = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
+    const summary = result.text;
+
     return NextResponse.json({ summary });
   } catch (error) {
-    console.error('Error generating summary:', error);
-    return NextResponse.json({ message: 'Error generating summary' }, { status: 500 });
+    console.error("Error generating summary:", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

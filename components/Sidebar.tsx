@@ -34,6 +34,12 @@ const Sidebar = () => {
               </Link>
             </li>
             <li className="nav-item">
+              <Link href="/summary" className={linkClasses('/summary')}>
+                <File className="me-3" />
+                <span className="fw-medium">Summary</span>
+              </Link>
+            </li>
+            <li className="nav-item">
               <Link href="/notes" className={linkClasses('/notes')}>
                 <File className="me-3" />
                 <span className="fw-medium">Notes</span>

@@ -1,7 +1,10 @@
-import { useState } from 'react';
+import moment from 'moment';
+import { useState, useEffect } from 'react';
 import Card from './Card';
-import { User, Clock, FileText, Save } from 'lucide-react';
+import { User, Clock, FileText, Save, Trash2 } from 'lucide-react';
 import TranscriptModal from './TranscriptModal';
+import { useNotification } from '@/app/context/NotificationContext';
+import ConfirmationDialog from './ConfirmationDialog';
 
 interface TranscriptEntry {
   speaker?: string;
@@ -14,7 +17,6 @@ interface Meeting {
   title: string;
   date: string;
   participants: number;
-
   transcript?: string | TranscriptEntry[];
   summary?: string;
   duration?: number;
@@ -25,6 +27,9 @@ interface Meeting {
 
 interface MeetingCardProps {
   meeting: Meeting;
+  onSummaryUpdated: (meetingId: string, summary: string) => void;
+  hideSummary?: boolean;
+  onDelete: (meetingId: string) => void;
 }
 
 const formatDuration = (milliseconds: number) => {
@@ -43,14 +48,21 @@ interface SummaryProps {
   transcript: string | TranscriptEntry[];
   initialSummary?: string;
   onSummaryGenerated: (summary: string) => void;
+  hideSummary?: boolean;
 }
 
-const Summary = ({ transcript, initialSummary, onSummaryGenerated }: SummaryProps) => {
+const Summary = ({ transcript, initialSummary, onSummaryGenerated, hideSummary }: SummaryProps) => {
   const [summary, setSummary] = useState(initialSummary || '');
   const [isGenerating, setIsGenerating] = useState(false);
+  const { addNotification } = useNotification();
+
+  useEffect(() => {
+    setSummary(initialSummary || '');
+  }, [initialSummary]);
 
   const generateSummary = async () => {
     setIsGenerating(true);
+    addNotification('Generating summary...', 'info');
     let currentTranscript = '';
     if (typeof transcript === 'string') {
       currentTranscript = transcript;
@@ -62,20 +74,26 @@ const Summary = ({ transcript, initialSummary, onSummaryGenerated }: SummaryProp
     }
 
     if (currentTranscript) {
-      const res = await fetch('/api/summarize', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ transcript: currentTranscript }),
-      });
+      try {
+        const res = await fetch('/api/summarize', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ transcript: currentTranscript }),
+        });
 
-      if (res.ok) {
-        const { summary } = await res.json();
-        setSummary(summary);
-        onSummaryGenerated(summary);
-      } else {
-        console.error('Error summarizing:', await res.text());
+        if (res.ok) {
+          const { summary } = await res.json();
+          setSummary(summary);
+          onSummaryGenerated(summary);
+          addNotification('Summary generated! You can see it on the Summary page.', 'success');
+        } else {
+          throw new Error('Failed to generate summary');
+        }
+      } catch (error) {
+        console.error('Error summarizing:', error);
+        addNotification('Error generating summary.', 'error');
       }
     }
     setIsGenerating(false);
@@ -83,21 +101,22 @@ const Summary = ({ transcript, initialSummary, onSummaryGenerated }: SummaryProp
 
   return (
     <div className="mt-4">
-      {summary ? (
+      {!summary && (
+        <button
+          onClick={generateSummary}
+          className="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-600 disabled:bg-blue-300"
+          disabled={isGenerating}
+        >
+          {isGenerating ? 'Generating Summary...' : 'Generate Summary'}
+        </button>
+      )}
+      {summary && !hideSummary && (
         <div>
           <h4 className="font-bold text-md mb-2 text-gray-800">Summary</h4>
           <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded-md border border-gray-200 whitespace-pre-wrap">
             {summary}
           </div>
         </div>
-      ) : (
-        <button 
-          onClick={generateSummary} 
-          className="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded hover:bg-blue-600 disabled:bg-blue-300" 
-          disabled={isGenerating}
-        >
-          {isGenerating ? 'Generating Summary...' : 'Generate Summary'}
-        </button>
       )}
     </div>
   );
@@ -138,11 +157,9 @@ const SaveButtons = ({ title, date, participants, transcript, summary }: SaveBut
         setGoogleDocsUrl(googleDocsUrl);
       } else {
         const errorData = await res.json();
-        // Handle error, e.g., display to user
         console.error('Failed to save to Google Docs:', errorData.message);
       }
     } catch (error) {
-      // Handle unexpected error
       console.error('An unexpected error occurred:', error);
     }
     setIsSaving(false);
@@ -170,11 +187,9 @@ const SaveButtons = ({ title, date, participants, transcript, summary }: SaveBut
         setNotionUrl(notionUrl);
       } else {
         const errorData = await res.json();
-        // Handle error, e.g., display to user
         console.error('Failed to save to Notion:', errorData.message);
       }
     } catch (error) {
-      // Handle unexpected error
       console.error('An unexpected error occurred:', error);
     }
     setIsSaving(false);
@@ -184,19 +199,19 @@ const SaveButtons = ({ title, date, participants, transcript, summary }: SaveBut
     <div className="mt-4">
       <div className="flex items-center space-x-4">
         {googleDocsUrl ? (
-          <a 
-            href={googleDocsUrl} 
-            target="_blank" 
-            rel="noopener noreferrer" 
+          <a
+            href={googleDocsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             className="flex items-center text-sm font-medium text-green-600 hover:text-green-800"
           >
             <Save className="w-4 h-4 mr-2" />
             View Google Doc
           </a>
         ) : (
-          <button 
-            onClick={saveToGoogleDoc} 
-            className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400" 
+          <button
+            onClick={saveToGoogleDoc}
+            className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400"
             disabled={isSaving}
           >
             <Save className="w-4 h-4 mr-2" />
@@ -204,19 +219,19 @@ const SaveButtons = ({ title, date, participants, transcript, summary }: SaveBut
           </button>
         )}
         {notionUrl ? (
-          <a 
-            href={notionUrl} 
-            target="_blank" 
-            rel="noopener noreferrer" 
+          <a
+            href={notionUrl}
+            target="_blank"
+            rel="noopener noreferrer"
             className="flex items-center text-sm font-medium text-green-600 hover:text-green-800"
           >
             <Save className="w-4 h-4 mr-2" />
             View in Notion
           </a>
         ) : (
-          <button 
-            onClick={saveToNotion} 
-            className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400" 
+          <button
+            onClick={saveToNotion}
+            className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400"
             disabled={isSaving}
           >
             <Save className="w-4 h-4 mr-2" />
@@ -229,14 +244,29 @@ const SaveButtons = ({ title, date, participants, transcript, summary }: SaveBut
   );
 };
 
-const MeetingCard = ({ meeting }: MeetingCardProps) => {
+const MeetingCard = ({ meeting, onSummaryUpdated, hideSummary, onDelete }: MeetingCardProps) => {
   const { title, date, participants, transcript, summary, duration, meetingUrl, source } = meeting;
-  const formattedDate = new Date(date).toLocaleString();
+  const formattedDate = moment(date).format('MMMM Do YYYY, h:mm:ss a');
   const [showTranscript, setShowTranscript] = useState(false);
   const [generatedSummary, setGeneratedSummary] = useState(summary);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  useEffect(() => {
+    setGeneratedSummary(summary);
+  }, [summary]);
 
   const handleSummaryGenerated = (newSummary: string) => {
     setGeneratedSummary(newSummary);
+    onSummaryUpdated(meeting.id, newSummary);
+  };
+
+  const handleDelete = () => {
+    setIsDeleteDialogOpen(true);
+  };
+
+  const handleConfirmDelete = () => {
+    onDelete(meeting.id);
+    setIsDeleteDialogOpen(false);
   };
 
   return (
@@ -247,10 +277,15 @@ const MeetingCard = ({ meeting }: MeetingCardProps) => {
             <h3 className="h5 fw-semibold mb-1 text-app">{title}</h3>
             <p className="small text-secondary mb-0">{formattedDate}</p>
           </div>
-          <span
-            className={`badge ${source === 'extension' ? 'text-bg-success' : 'text-bg-primary'}`}>
-            {source === 'extension' ? 'Captured' : 'Calendar'}
-          </span>
+          <div className="d-flex align-items-center">
+            <span
+              className={`badge ${source === 'extension' ? 'text-bg-success' : 'text-bg-primary'}`}>
+              {source === 'extension' ? 'Captured' : 'Calendar'}
+            </span>
+            <button onClick={handleDelete} className="btn btn-sm btn-ghost text-danger ms-2">
+              <Trash2 size={16} />
+            </button>
+          </div>
         </div>
 
         {duration && duration > 0 && (
@@ -289,14 +324,15 @@ const MeetingCard = ({ meeting }: MeetingCardProps) => {
         )}
 
         {transcript && (
-          <Summary 
-            transcript={transcript as string | TranscriptEntry[]} 
+          <Summary
+            transcript={transcript as string | TranscriptEntry[]}
             initialSummary={generatedSummary}
-            onSummaryGenerated={handleSummaryGenerated} 
+            onSummaryGenerated={handleSummaryGenerated}
+            hideSummary={hideSummary}
           />
         )}
 
-        {generatedSummary && (
+        {generatedSummary && !hideSummary && (
           <SaveButtons
             title={title}
             date={date}
@@ -310,8 +346,15 @@ const MeetingCard = ({ meeting }: MeetingCardProps) => {
           <TranscriptModal transcript={transcript} onClose={() => setShowTranscript(false)} />
         )}
       </div>
+      <ConfirmationDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Meeting"
+      >
+        Are you sure you want to delete this meeting? This action cannot be undone.
+      </ConfirmationDialog>
     </Card>
   );
 };
-
 export default MeetingCard;
